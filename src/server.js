@@ -1,15 +1,11 @@
 #!/usr/bin/env node
 
+// Získáme Stremio addon SDK
+const { serveHTTP } = require("stremio-addon-sdk");
 const addonInterface = require("./addon");
-const http = require('http');
-const fs = require('fs');
-const path = require('path');
 
-// Port je kriticky důležitý pro Heroku
-const port = process.env.PORT || 7000;
-
-// Obsah HTML stránky pro případ, že nelze načíst soubor
-const fallbackHtml = `
+// HTML pro hlavní stránku
+const landingHTML = `
 <!DOCTYPE html>
 <html>
 <head>
@@ -39,66 +35,28 @@ const fallbackHtml = `
 </html>
 `;
 
-// Vytvoříme základní HTTP server pro maximální kompatibilitu
-const server = http.createServer((req, res) => {
-  try {
-    const url = new URL(req.url, `http://${req.headers.host}`);
-    const pathname = url.pathname;
-    
-    console.log(`Požadavek: ${req.method} ${pathname}`);
-    
-    if (pathname === '/' || pathname === '/index.html') {
-      // Servírování hlavní HTML stránky
-      res.statusCode = 200;
-      res.setHeader('Content-Type', 'text/html; charset=utf-8');
-      
-      // Zkusíme načíst HTML soubor, ale máme fallback pro jistotu
-      try {
-        const indexPath = path.join(__dirname, 'public', 'index.html');
-        if (fs.existsSync(indexPath)) {
-          const htmlContent = fs.readFileSync(indexPath, 'utf8');
-          res.end(htmlContent);
-        } else {
-          console.log('index.html nenalezen, používám fallback HTML');
-          res.end(fallbackHtml);
-        }
-      } catch (err) {
-        console.error('Chyba při čtení HTML:', err);
-        res.end(fallbackHtml);
-      }
-      return;
-    }
-    
-    // Zpracování Stremio API požadavků
-    addonInterface.middleware(req, res, () => {
-      // Fallback pro ostatní požadavky
-      if (pathname === '/health' || pathname === '/status') {
-        res.statusCode = 200;
-        res.setHeader('Content-Type', 'application/json');
-        res.end(JSON.stringify({ status: 'ok', version: '0.3.0' }));
-      } else {
-        // Přesměrování na hlavní stránku
-        res.statusCode = 302;
-        res.setHeader('Location', '/');
-        res.end();
-      }
-    });
-  } catch (error) {
-    // Zpracování chyb uvnitř serveru
-    console.error('Chyba při zpracování požadavku:', error);
-    res.statusCode = 500;
-    res.setHeader('Content-Type', 'text/plain');
-    res.end('Internal Server Error');
-  }
+// Upravený addonInterface s vlastním landingPage
+const addonWithLanding = {
+    ...addonInterface,
+    landingTemplate: landingHTML
+};
+
+// Port je kriticky důležitý pro Heroku
+const port = process.env.PORT || 7000;
+
+// Použijeme serveHTTP z SDK - nejjednodušší a nejspolehlivější způsob
+serveHTTP(addonWithLanding, { 
+    port: port,
+    host: '0.0.0.0',  // Důležité pro Heroku
+    static: __dirname + '/public', // Pro statické soubory
+    logRequests: true, // Pro lepší debugování
+    cache: { max: 1000, maxAge: 3600 * 1000 } // Nastavení cache
 });
 
-// Posloucháme na všech rozhraních (0.0.0.0) - KRITICKÉ pro Heroku
-server.listen(port, '0.0.0.0', () => {
-  console.log(`Server běží na portu ${port}`);
-  console.log(`Adresa pro Stremio: http://localhost:${port}/manifest.json`);
-});
+console.log(`Server běží na portu ${port}`);
+console.log(`Adresa pro Stremio: http://localhost:${port}/manifest.json`);
 
-// Zachytávání chyb na úrovni procesu
+// Zachytávání chyb
 process.on('uncaughtException', (err) => {
   console.error('Neošetřená výjimka:', err);
 });
