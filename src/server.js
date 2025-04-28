@@ -4,6 +4,8 @@
 const addonInterface = require("./addon");
 const express = require("express");
 const http = require('http');
+const axios = require('axios');
+const cors = require('cors');
 
 // Port je kriticky důležitý pro cloudové platformy
 const port = process.env.PORT || process.env.port || 3000;
@@ -211,16 +213,115 @@ function generateHTML(req) {
 const app = express();
 
 // Povolení CORS pro všechny požadavky (důležité pro Stremio)
-app.use((req, res, next) => {
-    res.header('Access-Control-Allow-Origin', '*');
-    res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
-    next();
-});
+app.use(cors({
+    origin: '*',
+    methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
+    preflightContinue: false,
+    optionsSuccessStatus: 204,
+    exposedHeaders: ['Content-Length', 'Content-Range', 'Content-Type', 'Accept-Ranges', 'Content-Disposition']
+}));
 
 // Logging middleware
 app.use((req, res, next) => {
     console.log(`${new Date().toISOString()} - ${req.method} ${req.url}`);
     next();
+});
+
+// Proxy middleware pro streamování videí bez CORS problémů
+app.get('/proxy-stream/:url', async (req, res) => {
+    try {
+        // Dekódujeme URL ze Base64
+        const originalUrl = Buffer.from(req.params.url, 'base64').toString();
+        console.log(`Proxying stream request to: ${originalUrl.substring(0, 50)}...`);
+        
+        // Nastavení hlaviček pro streaming
+        res.setHeader('Access-Control-Allow-Origin', '*');
+        res.setHeader('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Range');
+        res.setHeader('Access-Control-Expose-Headers', 'Content-Length, Content-Range, Content-Type, Accept-Ranges, Content-Disposition');
+        
+        // Zpracování range requestů (důležité pro video streaming)
+        let headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+        };
+        
+        if (req.headers.range) {
+            headers.range = req.headers.range;
+            console.log(`Range request: ${req.headers.range}`);
+        }
+
+        // Nejdříve zjistíme info o videu použitím HEAD requestu
+        let contentInfo;
+        try {
+            const headResponse = await axios.head(originalUrl, { headers });
+            contentInfo = {
+                contentType: headResponse.headers['content-type'] || 'video/mp4',
+                contentLength: headResponse.headers['content-length'],
+                acceptRanges: headResponse.headers['accept-ranges'] || 'bytes'
+            };
+        } catch (headError) {
+            console.error('Error during HEAD request:', headError.message);
+            contentInfo = {
+                contentType: 'video/mp4',
+                acceptRanges: 'bytes'
+            };
+        }
+        
+        // Nastavíme správné hlavičky pro stream
+        res.setHeader('Content-Type', contentInfo.contentType);
+        res.setHeader('Accept-Ranges', contentInfo.acceptRanges);
+        
+        if (contentInfo.contentLength) {
+            res.setHeader('Content-Length', contentInfo.contentLength);
+        }
+
+        // Streamujeme video z původního zdroje
+        const response = await axios({
+            method: 'get',
+            url: originalUrl,
+            responseType: 'stream',
+            headers: headers,
+            maxRedirects: 5,
+            timeout: 30000
+        });
+
+        // Kopírujeme hlavičky z odpovědi
+        Object.keys(response.headers).forEach(key => {
+            // Skip některé hlavičky, které by mohly způsobit problémy
+            if (!['content-encoding', 'transfer-encoding', 'connection'].includes(key.toLowerCase())) {
+                res.setHeader(key, response.headers[key]);
+            }
+        });
+
+        // Streamujeme data do odpovědi
+        response.data.pipe(res);
+        
+        // Zpracování chyb při streamování
+        response.data.on('error', (err) => {
+            console.error('Stream error:', err);
+            if (!res.headersSent) {
+                res.status(500).send('Stream error');
+            } else {
+                res.end();
+            }
+        });
+        
+        // Cleanup po dokončení
+        res.on('close', () => {
+            response.data.destroy();
+        });
+        
+    } catch (error) {
+        console.error('Proxy error:', error.message);
+        
+        if (!res.headersSent) {
+            res.status(500).send({
+                error: 'Failed to proxy stream',
+                message: error.message
+            });
+        } else {
+            res.end();
+        }
+    }
 });
 
 // Přidáme middleware pro zpracování požadavků na kořenovou URL

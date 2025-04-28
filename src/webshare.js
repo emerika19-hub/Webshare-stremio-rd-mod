@@ -60,6 +60,106 @@ const search = async (query, token) => {
         // only include files that actually match the query - contain at least one keyword
         .filter(item => item.match > 0)
 }
+const addUrlToStreams = async (streams, token) => {
+    return Promise.all(streams.map(async stream => {
+        try {
+            const { ident, ...restStream } = stream
+            
+            // Přidání podpory pro opakované pokusy získání URL
+            const MAX_RETRIES = 3;
+            let url = null;
+            let attempt = 0;
+            
+            while (!url && attempt < MAX_RETRIES) {
+                attempt++;
+                try {
+                    const data = formencode({ 
+                        ident, 
+                        download_type: 'video_stream', 
+                        force_https: 1, 
+                        wst: token 
+                    });
+                    
+                    const resp = await needle('post', 'https://webshare.cz/api/file_link/', data, { 
+                        headers,
+                        follow_max: 5 // Sledování přesměrování
+                    });
+                    
+                    if (!resp.body || !resp.body.children) {
+                        console.error(`Invalid response for ${ident}, attempt ${attempt}:`, resp.body);
+                        // Krátká pauza před dalším pokusem
+                        await new Promise(resolve => setTimeout(resolve, 1000));
+                        continue;
+                    }
+                    
+                    const status = resp.body.children.find(el => el.name == 'status')?.value;
+                    
+                    if (status === 'OK') {
+                        url = resp.body.children.find(el => el.name == 'link')?.value;
+                        
+                        if (url) {
+                            console.log(`URL získána pro ${ident}: ${url.substring(0, 50)}...`);
+                            
+                            // Zkusíme získat přímou URL bez přesměrování
+                            try {
+                                const checkResp = await needle('head', url, null, {
+                                    follow_max: 5,
+                                    headers: {
+                                        'User-Agent': headers['User-Agent']
+                                    }
+                                });
+                                
+                                if (checkResp.statusCode >= 300 && checkResp.statusCode < 400 && checkResp.headers.location) {
+                                    // Pokud server vrátí přesměrování, použijeme přesměrovanou URL
+                                    url = checkResp.headers.location;
+                                    console.log(`Přesměrovaná URL: ${url.substring(0, 50)}...`);
+                                } else if (checkResp.statusCode >= 400) {
+                                    console.error(`URL validation failed for ${ident}: status ${checkResp.statusCode}`);
+                                    url = null; // reset URL to retry
+                                }
+                            } catch (e) {
+                                console.error(`Error validating URL for ${ident}:`, e.message);
+                                // Necháme původní URL, i když validace selhala - může fungovat v přehrávači
+                            }
+                        }
+                    } else {
+                        console.error(`Failed to get link for ${ident}, status: ${status}`);
+                    }
+                } catch (err) {
+                    console.error(`Error fetching URL for ${ident}, attempt ${attempt}:`, err.message);
+                }
+                
+                if (!url && attempt < MAX_RETRIES) {
+                    // Exponential backoff
+                    await new Promise(resolve => setTimeout(resolve, attempt * 1500));
+                }
+            }
+            
+            if (url) {
+                // Přidáme proxy URL, která vyřeší CORS problémy
+                // Tato proxy URL bude zpracována serverem a vrátí stream s potřebnými hlavičkami 
+                const proxyUrl = `/proxy-stream/${Buffer.from(url).toString('base64')}`;
+                
+                return { 
+                    ...restStream, 
+                    url: proxyUrl,
+                    // Metadate pro Stremio
+                    title: restStream.description || restStream.name, 
+                    "behaviorHints": {
+                        "notWebReady": false  // stream může být přehrán ve webové verzi Stremio
+                    }
+                };
+            } else {
+                console.error(`Failed to get valid URL for ${ident} after ${MAX_RETRIES} attempts`);
+                return restStream;
+            }
+        } catch (error) {
+            console.error(`Unexpected error processing stream:`, error);
+            return stream;
+        }
+    }));
+};
+
 const webshare = {
     login: async (user, password) => {
         console.log(`Logging in user ${user}`)
@@ -117,95 +217,8 @@ const webshare = {
         })).slice(0, 20)
     },
 
-    addUrlToStreams: async (streams, token) => {
-        return Promise.all(streams.map(async stream => {
-            try {
-                const { ident, ...restStream } = stream
-                
-                // Přidání podpory pro opakované pokusy získání URL
-                const MAX_RETRIES = 3;
-                let url = null;
-                let attempt = 0;
-                
-                while (!url && attempt < MAX_RETRIES) {
-                    attempt++;
-                    try {
-                        const data = formencode({ 
-                            ident, 
-                            download_type: 'video_stream', 
-                            force_https: 1, 
-                            wst: token 
-                        });
-                        
-                        const resp = await needle('post', 'https://webshare.cz/api/file_link/', data, { 
-                            headers,
-                            follow_max: 5 // Sledování přesměrování
-                        });
-                        
-                        if (!resp.body || !resp.body.children) {
-                            console.error(`Invalid response for ${ident}, attempt ${attempt}:`, resp.body);
-                            // Krátká pauza před dalším pokusem
-                            await new Promise(resolve => setTimeout(resolve, 1000));
-                            continue;
-                        }
-                        
-                        const status = resp.body.children.find(el => el.name == 'status')?.value;
-                        
-                        if (status === 'OK') {
-                            url = resp.body.children.find(el => el.name == 'link')?.value;
-                            
-                            if (url) {
-                                console.log(`URL získána pro ${ident}: ${url.substring(0, 50)}...`);
-                                
-                                // Ověření URL - zkusíme provést HEAD request
-                                try {
-                                    const checkResp = await needle('head', url, null, {
-                                        follow_max: 5,
-                                        headers: {
-                                            'User-Agent': headers['User-Agent']
-                                        }
-                                    });
-                                    
-                                    if (checkResp.statusCode >= 400) {
-                                        console.error(`URL validation failed for ${ident}: status ${checkResp.statusCode}`);
-                                        url = null; // reset URL to retry
-                                    }
-                                } catch (e) {
-                                    console.error(`Error validating URL for ${ident}:`, e.message);
-                                    url = null; // reset URL to retry
-                                }
-                            }
-                        } else {
-                            console.error(`Failed to get link for ${ident}, status: ${status}`);
-                        }
-                    } catch (err) {
-                        console.error(`Error fetching URL for ${ident}, attempt ${attempt}:`, err.message);
-                    }
-                    
-                    if (!url && attempt < MAX_RETRIES) {
-                        // Exponential backoff
-                        await new Promise(resolve => setTimeout(resolve, attempt * 1500));
-                    }
-                }
-                
-                if (url) {
-                    return { 
-                        ...restStream, 
-                        url,
-                        // Nastavení správného MIME typu pro video streamy
-                        // Pomůže Stremio s přehráváním
-                        contentType: url.toLowerCase().endsWith('.mp4') ? 'video/mp4' : 'video/x-matroska'
-                    };
-                } else {
-                    console.error(`Failed to get valid URL for ${ident} after ${MAX_RETRIES} attempts`);
-                    return restStream;
-                }
-            } catch (error) {
-                console.error(`Unexpected error processing stream:`, error);
-                return restStream;
-            }
-        }));
-    }
+    // Nahrazení původní implementace naší vylepšenou verzí
+    addUrlToStreams: addUrlToStreams
 }
 
 module.exports = webshare
