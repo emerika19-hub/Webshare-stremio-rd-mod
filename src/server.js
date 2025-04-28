@@ -41,47 +41,65 @@ const expandedAddonInterface = Object.assign({}, addonInterface);
 // Přepíšeme původní middleware funkci, abychom mohli obsloužit i kořenovou cestu
 const originalMiddleware = expandedAddonInterface.middleware || ((req, res, next) => { next(); });
 expandedAddonInterface.middleware = (req, res, next) => {
-    const url = new URL(req.url, `http://${req.headers.host}`);
-    const pathname = url.pathname;
-    
-    // Pouze pro debugging - logujeme všechny požadavky
-    console.log(`Požadavek: ${req.method} ${pathname}`);
-    
-    // Pro kořenový adresář nebo 404 stránku vrátíme naši HTML stránku
-    if (pathname === '/' || pathname === '/index.html' || pathname === '/404') {
-        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-        res.end(landingHTML);
-        return;
+    try {
+        const url = new URL(req.url, `http://${req.headers.host}`);
+        const pathname = url.pathname;
+        
+        // Pouze pro debugging - logujeme všechny požadavky
+        console.log(`Požadavek: ${req.method} ${pathname}`);
+        
+        // Pro kořenový adresář nebo 404 stránku vrátíme naši HTML stránku
+        if (pathname === '/' || pathname === '/index.html' || pathname === '/404') {
+            res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+            res.end(landingHTML);
+            return;
+        }
+        
+        // Health check endpoint pro Render.com
+        if (pathname === '/health' || pathname === '/healthz' || pathname === '/healthcheck') {
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ 
+                status: 'ok', 
+                version: '0.3.0',
+                uptime: process.uptime()
+            }));
+            return;
+        }
+        
+        // Ostatní cesty necháme zpracovat původním middleware
+        originalMiddleware(req, res, next);
+    } catch (error) {
+        console.error("Error processing request:", error);
+        res.writeHead(500, { 'Content-Type': 'text/plain; charset=utf-8' });
+        res.end("Internal Server Error");
     }
-    
-    // Health check endpoint pro Render.com
-    if (pathname === '/health') {
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ 
-            status: 'ok', 
-            version: '0.3.0',
-            uptime: process.uptime()
-        }));
-        return;
-    }
-    
-    // Ostatní cesty necháme zpracovat původním middleware
-    originalMiddleware(req, res, next);
 };
 
-// Port je kriticky důležitý pro Heroku
-const port = process.env.PORT || 7000;
+// Port je kriticky důležitý pro cloudové platformy
+const port = process.env.PORT || 3000;  // Změna výchozího portu na 3000, který Render používá
+
+// Určete hostname pro poslech
+const hostname = process.env.HOST || '0.0.0.0';
+
+console.log(`Starting server on ${hostname}:${port}`);
 
 // Použijeme serveHTTP z SDK
 serveHTTP(expandedAddonInterface, { 
     port: port,
-    host: '0.0.0.0',  // Důležité pro cloudové platformy
+    host: hostname,  // Důležité pro cloudové platformy
     logRequests: true, // Pro lepší debugování
     cache: { max: 1000, maxAge: 3600 * 1000 } // Nastavení cache
 });
 
 console.log(`Server běží na portu ${port}`);
-console.log(`Adresa pro Stremio: http://127.0.0.1:${port}/manifest.json`);
+console.log(`Adresa pro Stremio: http://localhost:${port}/manifest.json`);
+
+// Log pro diagnostiku
+console.log('Environment variables:', {
+    NODE_ENV: process.env.NODE_ENV,
+    PORT: process.env.PORT,
+    HOST: process.env.HOST
+});
 
 // Zachytávání chyb
 process.on('uncaughtException', (err) => {
