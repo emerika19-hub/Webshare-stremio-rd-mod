@@ -2,10 +2,10 @@
 	"name": "stremio-addon-webshare",
 	"version": "0.3.0",
 	"description": "Simple webshare.cz search and streaming with Real-Debrid support.",
+	"main": "src/server.js",
 	"scripts": {
 		"start": "node src/server.js",
-		"build": "npm install",
-		"deploy": "node src/server.js",
+		"build": "echo \"No build required\"",
 		"dev": "nodemon src/server.js"
 	},
 	"dependencies": {
@@ -21,6 +21,7 @@
 		"nodemon": "^3.0.1"
 	},
 	"engines": {
-		"node": "16.x"
+		"node": "16.x",
+		"npm": "8.x"
 	}
 }

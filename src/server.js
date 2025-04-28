@@ -1,31 +1,31 @@
 #!/usr/bin/env node
 
-const { serveHTTP } = require("stremio-addon-sdk");
 const addonInterface = require("./addon");
+const http = require('http');
 
-// Použití portu z proměnných prostředí (důležité pro Heroku)
+// Port je kriticky důležitý pro Heroku
 const port = process.env.PORT || 7000;
 
-// Spuštění HTTP serveru na všech rozhraních (0.0.0.0 je kritické pro Heroku)
-console.log(`Starting HTTP server on port ${port}`);
-serveHTTP(addonInterface, { 
-    port: port,
-    host: '0.0.0.0',
-    cache: {
-        max: 1000,
-        maxAge: 24 * 60 * 60 * 1000 // 24 hodiny
-    }
+// Vytvoříme základní HTTP server pro maximální kompatibilitu
+const server = http.createServer((req, res) => {
+  // Zkusit zpracovat jako Stremio addon požadavek
+  addonInterface.middleware(req, res, () => {
+    // Fallback pro nerozeznané požadavky
+    res.statusCode = 200;
+    res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+    res.end('Webshare Stremio Addon je online! Pro použití ve Stremio přidejte tuto URL končící na /manifest.json');
+  });
 });
 
-// Základní hlášení pro debugging
-console.log(`Addon běží na http://127.0.0.1:${port}/manifest.json`);
+// Posloucháme na všech rozhraních (0.0.0.0) - KRITICKÉ pro Heroku
+server.listen(port, '0.0.0.0', () => {
+  console.log(`Server běží na portu ${port}`);
+  console.log(`Addon URL: http://localhost:${port}/manifest.json`);
+});
 
-// Log pro kontrolu prostředí
-console.log('Environment variables:', {
-    NODE_ENV: process.env.NODE_ENV,
-    PORT: process.env.PORT,
-    DYNO: process.env.DYNO,
-    VERCEL: process.env.VERCEL
+// Zachytávání nekritických chyb bez pádu serveru
+process.on('uncaughtException', (err) => {
+  console.error('Zachycena neošetřená výjimka:', err);
 });
 
 // Pro publikování addonu do centrálního adresáře Stremio, odkomentujte následující řádek
