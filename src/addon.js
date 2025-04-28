@@ -7,7 +7,7 @@ const { findShowInfo } = require("./meta")
 // Docs: https://github.com/Stremio/stremio-addon-sdk/blob/master/docs/api/responses/manifest.md
 const manifest = {
 	"id": "community.coffei.webshare",
-	"version": "0.2.0",
+	"version": "0.3.0",
 	"catalogs": [],
 	"resources": ["stream"],
 	"types": [
@@ -36,13 +36,14 @@ const manifest = {
 		{
 			"key": "realdebrid_api",
 			"type": "password",
-			"title": "Real-Debrid API Key (volitelné)",
+			"title": "Real-Debrid API Key (volitelné/optional)",
+			"description": "Získejte API klíč na real-debrid.com v sekci Můj účet > API",
 			"required": false
 		},
 		{
 			"key": "use_realdebrid",
 			"type": "select",
-			"title": "Použít Real-Debrid pro streamování",
+			"title": "Použít Real-Debrid pro streamování / Use Real-Debrid for streaming",
 			"options": ["ano", "ne"],
 			"default": "ne",
 			"required": false
@@ -52,10 +53,42 @@ const manifest = {
 const builder = new addonBuilder(manifest)
 
 builder.defineStreamHandler(async function (args) {
+	console.log("Požadavek na stream:", args.id, "s konfigurací:", args.config ? "konfigurace existuje" : "bez konfigurace");
+	
 	const info = await findShowInfo(args.type, args.id)
 	if (info) {
 		const config = args.config || {}
+		
+		// Log konfigurace (bez hesla pro bezpečnost)
+		console.log(`Konfigurace: login=${config.login ? "zadáno" : "nezadáno"}, password=${config.password ? "zadáno" : "nezadáno"}, realdebrid_api=${config.realdebrid_api ? "zadáno" : "nezadáno"}, use_realdebrid=${config.use_realdebrid}`);
+		
+		// Kontrola přihlašovacích údajů
+		if (!config.login || !config.password) {
+			console.log("Chybí přihlašovací údaje Webshare");
+			return { 
+				streams: [
+					{ 
+						title: "⚠️ Chybí přihlašovací údaje Webshare",
+						url: "https://www.webshare.cz/" 
+					}
+				] 
+			};
+		}
+		
 		const wsToken = await webshare.login(config.login, config.password)
+		
+		if (!wsToken) {
+			console.log("Neúspěšné přihlášení k Webshare");
+			return { 
+				streams: [
+					{ 
+						title: "⚠️ Neplatné přihlašovací údaje Webshare",
+						url: "https://www.webshare.cz/" 
+					}
+				] 
+			};
+		}
+		
 		const streams = await webshare.search(info, wsToken)
 		const streamsWithUrl = await webshare.addUrlToStreams(streams, wsToken)
 
@@ -87,6 +120,15 @@ builder.defineStreamHandler(async function (args) {
 				return { streams: rdStreams };
 			} else {
 				console.log('Real-Debrid API klíč není platný, použijeme standardní odkazy Webshare');
+				return { 
+					streams: [
+						{ 
+							title: "⚠️ Neplatný Real-Debrid API klíč",
+							url: "https://real-debrid.com/" 
+						},
+						...streamsWithUrl
+					] 
+				};
 			}
 		}
 

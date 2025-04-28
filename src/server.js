@@ -6,12 +6,12 @@ const express = require("express");
 const http = require('http');
 
 // Port je kriticky důležitý pro cloudové platformy
-const port = process.env.PORT || 10000;
+const port = process.env.PORT || process.env.port || 3000;
 
 // Generuje HTML stránku s dynamicky vloženou URL
 function generateHTML(req) {
     // Detekujeme aktuální URL ze samotného požadavku
-    const host = req.headers.host || 'localhost:10000';
+    const host = req.headers.host || 'localhost:3000';
     const protocol = req.headers['x-forwarded-proto'] || 'http';
     const baseUrl = `${protocol}://${host}`;
     
@@ -35,6 +35,10 @@ function generateHTML(req) {
                 color: #2c3e50; 
                 border-bottom: 2px solid #3498db;
                 padding-bottom: 10px;
+            }
+            h2 {
+                color: #2980b9;
+                margin-top: 30px;
             }
             .container {
                 background: white;
@@ -74,21 +78,89 @@ function generateHTML(req) {
                 border-radius: 6px;
                 border-left: 4px solid #3498db;
             }
+            .warning {
+                background-color: #feecdc;
+                border-left-color: #ed8936;
+            }
+            .step {
+                counter-increment: step-counter;
+                margin-bottom: 20px;
+                position: relative;
+                padding-left: 40px;
+            }
+            .step:before {
+                content: counter(step-counter);
+                position: absolute;
+                left: 0;
+                top: 0;
+                width: 30px;
+                height: 30px;
+                background: #3498db;
+                color: white;
+                border-radius: 50%;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                font-weight: bold;
+            }
+            .image-container {
+                margin: 20px 0;
+                text-align: center;
+            }
+            .image-container img {
+                max-width: 100%;
+                border-radius: 4px;
+                box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            }
         </style>
     </head>
     <body>
         <div class="container">
             <h1>Webshare Stremio Addon s Real-Debrid podporou</h1>
             
+            <div class="info-box warning">
+                <strong>Důležité upozornění:</strong> Konfigurace addonu se provádí přímo v aplikaci Stremio, ne na této stránce!
+            </div>
+            
             <p>Tento addon umožňuje streamování filmů a seriálů z Webshare.cz s volitelnou podporou Real-Debrid pro rychlejší stahování.</p>
             
-            <h2>Instalace do Stremio</h2>
-            <p>Pro instalaci tohoto addonu do Stremio klikněte na tlačítko níže:</p>
+            <h2>Instalace a nastavení</h2>
             
-            <a href="stremio://addon/${baseUrl}/manifest.json" class="btn">Nainstalovat do Stremio</a>
+            <div class="step">
+                <strong>Nainstalujte addon do Stremio</strong><br>
+                Klikněte na tlačítko níže nebo přidejte následující URL do Stremio ručně v sekci Addons > Přidat Addon:
+                <br>
+                <a href="stremio://addon/${baseUrl}/manifest.json" class="btn">Nainstalovat do Stremio</a>
+                <br>
+                <code>${baseUrl}/manifest.json</code>
+            </div>
             
-            <p>Nebo přidejte následující URL do Stremio ručně v sekci Addons > Přidat Addon:</p>
-            <code>${baseUrl}/manifest.json</code>
+            <div class="step">
+                <strong>Zadání přihlašovacích údajů</strong><br>
+                Po instalaci budete vyzváni k zadání následujících údajů:
+                <ul>
+                    <li><strong>Webshare.cz login:</strong> Váš uživatelský email nebo jméno</li>
+                    <li><strong>Webshare.cz password:</strong> Vaše heslo k účtu Webshare</li>
+                    <li><strong>Real-Debrid API Key (volitelné):</strong> API klíč z Real-Debrid účtu</li>
+                    <li><strong>Použít Real-Debrid:</strong> Vyberte "ano", pokud chcete využívat Real-Debrid pro streamování</li>
+                </ul>
+            </div>
+            
+            <div class="step">
+                <strong>Získání API klíče Real-Debrid</strong><br>
+                Pokud chcete využívat Real-Debrid (doporučeno pro vysokou rychlost a stabilitu):
+                <ol>
+                    <li>Přihlaste se ke svému účtu na <a href="https://real-debrid.com/" target="_blank">real-debrid.com</a></li>
+                    <li>Přejděte do sekce "Můj účet" > "API"</li>
+                    <li>V sekci "Osobní token API" zkopírujte API klíč</li>
+                    <li>Tento klíč vložte do konfigurace addonu v Stremio</li>
+                </ol>
+            </div>
+            
+            <div class="image-container">
+                <img src="https://i.imgur.com/82pPuH0.png" alt="Screenshot Stremio konfigurace" width="400">
+                <p><em>Příklad konfiguračního dialogu v Stremio</em></p>
+            </div>
             
             <h2>Funkce</h2>
             <div class="feature">
@@ -103,12 +175,13 @@ function generateHTML(req) {
                 <strong>Označené streamy:</strong> Streamy používající Real-Debrid jsou označeny ikonou 🚀.
             </div>
             
-            <h2>Nastavení</h2>
-            <p>Po instalaci addonu budete požádáni o:</p>
+            <h2>Řešení problémů</h2>
+            <p>Pokud se vám nezobrazují žádné streamy nebo addon nefunguje správně:</p>
             <ul>
-                <li>Přihlašovací údaje k Webshare.cz</li>
-                <li>Volitelně API klíč Real-Debrid</li>
-                <li>Zda chcete používat Real-Debrid pro streamování</li>
+                <li><strong>Zkontrolujte přihlašovací údaje</strong> - ujistěte se, že máte správně zadané přihlašovací údaje pro Webshare.cz</li>
+                <li><strong>Real-Debrid API klíč</strong> - ověřte, že váš API klíč je platný a správně zadaný</li>
+                <li><strong>Reinstalujte addon</strong> - někdy pomůže addon odinstalovat a znovu nainstalovat</li>
+                <li><strong>Restartujte Stremio</strong> - po změně konfigurace je dobré restartovat aplikaci Stremio</li>
             </ul>
             
             <div class="info-box">
@@ -121,6 +194,14 @@ function generateHTML(req) {
                 </ul>
             </div>
         </div>
+        
+        <script>
+            // Detekce zda jsme na mobilní verzi Stremio
+            if (window.location.href.includes('stremio-addon-guide')) {
+                document.querySelector('.container').innerHTML = '<h1>Webshare Stremio Addon</h1>' +
+                    '<p>Tento addon je úspěšně nainstalován! Nyní můžete zavřít tuto stránku a pokračovat do Stremio.</p>';
+            }
+        </script>
     </body>
     </html>
     `;
@@ -203,6 +284,7 @@ app.get('/:resource/:type/:id/:extra?.json', (req, res, next) => {
         addonInterface.methods[resource]({ type, id, extra })
             .then(result => {
                 res.setHeader('Content-Type', 'application/json');
+                res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
                 res.send(result);
             })
             .catch(err => {
