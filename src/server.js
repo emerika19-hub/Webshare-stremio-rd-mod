@@ -4,6 +4,14 @@
 const { serveHTTP } = require("stremio-addon-sdk");
 const addonInterface = require("./addon");
 
+// Port je kriticky důležitý pro cloudové platformy
+const port = process.env.PORT || 10000;
+
+// Určete hostname pro poslech
+const hostname = process.env.HOST || '0.0.0.0';
+
+console.log(`Starting server on ${hostname}:${port}`);
+
 // HTML pro hlavní stránku
 const landingHTML = `
 <!DOCTYPE html>
@@ -35,70 +43,50 @@ const landingHTML = `
 </html>
 `;
 
-// Rozšíříme addonInterface o vlastní obsluhu routy pro kořenový endpoint
-const expandedAddonInterface = Object.assign({}, addonInterface);
+// Vytvoříme express HTTP server pro zpracování požadavků
+const http = require('http');
+const express = require('stremio-addon-sdk/src/lib/express');
+const app = express();
 
-// Přepíšeme původní middleware funkci, abychom mohli obsloužit i kořenovou cestu
-const originalMiddleware = expandedAddonInterface.middleware || ((req, res, next) => { next(); });
-expandedAddonInterface.middleware = (req, res, next) => {
-    try {
-        const url = new URL(req.url, `http://${req.headers.host}`);
-        const pathname = url.pathname;
-        
-        // Pouze pro debugging - logujeme všechny požadavky
-        console.log(`Požadavek: ${req.method} ${pathname}`);
-        
-        // Pro kořenový adresář nebo 404 stránku vrátíme naši HTML stránku
-        if (pathname === '/' || pathname === '/index.html' || pathname === '/404') {
-            res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-            res.end(landingHTML);
-            return;
-        }
-        
-        // Health check endpoint pro Render.com
-        if (pathname === '/health' || pathname === '/healthz' || pathname === '/healthcheck') {
-            res.writeHead(200, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({ 
-                status: 'ok', 
-                version: '0.3.0',
-                uptime: process.uptime()
-            }));
-            return;
-        }
-        
-        // Ostatní cesty necháme zpracovat původním middleware
-        originalMiddleware(req, res, next);
-    } catch (error) {
-        console.error("Error processing request:", error);
-        res.writeHead(500, { 'Content-Type': 'text/plain; charset=utf-8' });
-        res.end("Internal Server Error");
-    }
-};
-
-// Port je kriticky důležitý pro cloudové platformy
-const port = process.env.PORT || 3000;  // Změna výchozího portu na 3000, který Render používá
-
-// Určete hostname pro poslech
-const hostname = process.env.HOST || '0.0.0.0';
-
-console.log(`Starting server on ${hostname}:${port}`);
-
-// Použijeme serveHTTP z SDK
-serveHTTP(expandedAddonInterface, { 
-    port: port,
-    host: hostname,  // Důležité pro cloudové platformy
-    logRequests: true, // Pro lepší debugování
-    cache: { max: 1000, maxAge: 3600 * 1000 } // Nastavení cache
+// Přidáme middleware pro zpracování požadavků na kořenovou URL
+app.get('/', (req, res) => {
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.send(landingHTML);
 });
 
-console.log(`Server běží na portu ${port}`);
-console.log(`Adresa pro Stremio: http://localhost:${port}/manifest.json`);
+app.get('/index.html', (req, res) => {
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.send(landingHTML);
+});
 
-// Log pro diagnostiku
-console.log('Environment variables:', {
-    NODE_ENV: process.env.NODE_ENV,
-    PORT: process.env.PORT,
-    HOST: process.env.HOST
+app.get('/health', (req, res) => {
+    res.setHeader('Content-Type', 'application/json');
+    res.send({
+        status: 'ok',
+        version: '0.3.0',
+        uptime: process.uptime()
+    });
+});
+
+app.get('/healthz', (req, res) => {
+    res.setHeader('Content-Type', 'application/json');
+    res.send({
+        status: 'ok'
+    });
+});
+
+// Iniciujeme standardní Stremio endpoint middleware
+// DŮLEŽITÉ: Používáme přímo addonInterface bez úprav
+const addonRouter = serveHTTP(addonInterface, { getRouter: true });
+
+// Připojíme addon middleware až za naše kustomizované routy
+app.use(addonRouter);
+
+// Spustíme server
+const server = http.createServer(app);
+server.listen(port, hostname, () => {
+    console.log(`Server běží na portu ${port}`);
+    console.log(`Adresa pro Stremio: http://localhost:${port}/manifest.json`);
 });
 
 // Zachytávání chyb
