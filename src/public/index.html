@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Webshare Stremio Addon s Real-Debrid podporou</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+            color: #333;
+        }
+        .container {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+        h1 {
+            color: #2c3e50;
+            border-bottom: 2px solid #3498db;
+            padding-bottom: 10px;
+        }
+        h2 {
+            color: #2980b9;
+        }
+        .btn {
+            display: inline-block;
+            background: #3498db;
+            color: white;
+            padding: 10px 15px;
+            text-decoration: none;
+            border-radius: 4px;
+            font-weight: bold;
+            margin: 10px 0;
+        }
+        .btn:hover {
+            background: #2980b9;
+        }
+        code {
+            background: #f8f8f8;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            padding: 2px 5px;
+            font-family: monospace;
+        }
+        .feature {
+            margin: 15px 0;
+            padding-left: 20px;
+            border-left: 3px solid #3498db;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Webshare Stremio Addon s Real-Debrid podporou</h1>
+        
+        <p>Tento addon umožňuje streamování filmů a seriálů z Webshare.cz s volitelnou podporou Real-Debrid pro rychlejší stahování.</p>
+        
+        <h2>Instalace do Stremio</h2>
+        <p>Pro instalaci tohoto addonu do Stremio klikněte na tlačítko níže:</p>
+        
+        <a href="stremio://addon/https://DYNAMICURLHERE/manifest.json" class="btn">Nainstalovat do Stremio</a>
+        
+        <p>Nebo přidejte následující URL do Stremio ručně v sekci Addons > Přidat Addon:</p>
+        <code>https://DYNAMICURLHERE/manifest.json</code>
+        
+        <h2>Funkce</h2>
+        <div class="feature">
+            <strong>Podpora Real-Debrid:</strong> Možnost využít Real-Debrid službu pro rychlejší a stabilnější streamování.
+        </div>
+        
+        <div class="feature">
+            <strong>Konfigurovatelné nastavení:</strong> Možnost zapnout/vypnout použití Real-Debrid.
+        </div>
+        
+        <div class="feature">
+            <strong>Označené streamy:</strong> Streamy používající Real-Debrid jsou označeny ikonou 🚀.
+        </div>
+        
+        <h2>Nastavení</h2>
+        <p>Po instalaci addonu budete požádáni o:</p>
+        <ul>
+            <li>Přihlašovací údaje k Webshare.cz</li>
+            <li>Volitelně API klíč Real-Debrid</li>
+            <li>Zda chcete používat Real-Debrid pro streamování</li>
+        </ul>
+        
+        <p>Verze 0.3.0</p>
+    </div>
+    
+    <script>
+        // Dynamicky aktualizovat URL na této stránce
+        document.addEventListener('DOMContentLoaded', function() {
+            const currentUrl = window.location.origin;
+            const allUrls = document.querySelectorAll('a[href*="DYNAMICURLHERE"], code');
+            
+            allUrls.forEach(element => {
+                if (element.tagName === 'A') {
+                    element.href = element.href.replace('DYNAMICURLHERE', currentUrl);
+                } else {
+                    element.textContent = element.textContent.replace('DYNAMICURLHERE', currentUrl);
+                }
+            });
+        });
+    </script>
+</body>
+</html>
