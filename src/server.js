@@ -54,6 +54,17 @@ expandedAddonInterface.middleware = (req, res, next) => {
         return;
     }
     
+    // Health check endpoint pro Render.com
+    if (pathname === '/health') {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ 
+            status: 'ok', 
+            version: '0.3.0',
+            uptime: process.uptime()
+        }));
+        return;
+    }
+    
     // Ostatní cesty necháme zpracovat původním middleware
     originalMiddleware(req, res, next);
 };
@@ -64,7 +75,7 @@ const port = process.env.PORT || 7000;
 // Použijeme serveHTTP z SDK
 serveHTTP(expandedAddonInterface, { 
     port: port,
-    host: '0.0.0.0',  // Důležité pro Heroku
+    host: '0.0.0.0',  // Důležité pro cloudové platformy
     logRequests: true, // Pro lepší debugování
     cache: { max: 1000, maxAge: 3600 * 1000 } // Nastavení cache
 });

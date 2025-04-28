@@ -5,7 +5,7 @@
 	"main": "src/server.js",
 	"scripts": {
 		"start": "node src/server.js",
-		"build": "echo \"No build required\"",
+		"build": "echo \"Building addon...\" && mkdir -p dist && cp -r src config package.json package-lock.json dist/ || true",
 		"dev": "nodemon src/server.js"
 	},
 	"dependencies": {
