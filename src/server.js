@@ -35,26 +35,42 @@ const landingHTML = `
 </html>
 `;
 
-// Upravený addonInterface s vlastním landingPage
-const addonWithLanding = {
-    ...addonInterface,
-    landingTemplate: landingHTML
+// Rozšíříme addonInterface o vlastní obsluhu routy pro kořenový endpoint
+const expandedAddonInterface = Object.assign({}, addonInterface);
+
+// Přepíšeme původní middleware funkci, abychom mohli obsloužit i kořenovou cestu
+const originalMiddleware = expandedAddonInterface.middleware || ((req, res, next) => { next(); });
+expandedAddonInterface.middleware = (req, res, next) => {
+    const url = new URL(req.url, `http://${req.headers.host}`);
+    const pathname = url.pathname;
+    
+    // Pouze pro debugging - logujeme všechny požadavky
+    console.log(`Požadavek: ${req.method} ${pathname}`);
+    
+    // Pro kořenový adresář nebo 404 stránku vrátíme naši HTML stránku
+    if (pathname === '/' || pathname === '/index.html' || pathname === '/404') {
+        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+        res.end(landingHTML);
+        return;
+    }
+    
+    // Ostatní cesty necháme zpracovat původním middleware
+    originalMiddleware(req, res, next);
 };
 
 // Port je kriticky důležitý pro Heroku
 const port = process.env.PORT || 7000;
 
-// Použijeme serveHTTP z SDK - nejjednodušší a nejspolehlivější způsob
-serveHTTP(addonWithLanding, { 
+// Použijeme serveHTTP z SDK
+serveHTTP(expandedAddonInterface, { 
     port: port,
     host: '0.0.0.0',  // Důležité pro Heroku
-    static: __dirname + '/public', // Pro statické soubory
     logRequests: true, // Pro lepší debugování
     cache: { max: 1000, maxAge: 3600 * 1000 } // Nastavení cache
 });
 
 console.log(`Server běží na portu ${port}`);
-console.log(`Adresa pro Stremio: http://localhost:${port}/manifest.json`);
+console.log(`Adresa pro Stremio: http://127.0.0.1:${port}/manifest.json`);
 
 // Zachytávání chyb
 process.on('uncaughtException', (err) => {
