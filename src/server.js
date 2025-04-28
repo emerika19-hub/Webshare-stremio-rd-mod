@@ -3,6 +3,8 @@
 // Získáme Stremio addon SDK
 const { serveHTTP } = require("stremio-addon-sdk");
 const addonInterface = require("./addon");
+const express = require("express");
+const http = require('http');
 
 // Port je kriticky důležitý pro cloudové platformy
 const port = process.env.PORT || 10000;
@@ -44,8 +46,6 @@ const landingHTML = `
 `;
 
 // Vytvoříme express HTTP server pro zpracování požadavků
-const http = require('http');
-const express = require('stremio-addon-sdk/src/lib/express');
 const app = express();
 
 // Přidáme middleware pro zpracování požadavků na kořenovou URL
@@ -75,12 +75,38 @@ app.get('/healthz', (req, res) => {
     });
 });
 
-// Iniciujeme standardní Stremio endpoint middleware
-// DŮLEŽITÉ: Používáme přímo addonInterface bez úprav
-const addonRouter = serveHTTP(addonInterface, { getRouter: true });
+// Stremio addon endpoints
+app.get('/manifest.json', (req, res) => {
+    res.setHeader('Content-Type', 'application/json');
+    res.send(addonInterface.manifest);
+});
 
-// Připojíme addon middleware až za naše kustomizované routy
-app.use(addonRouter);
+// Zpracování streamů pomocí addonInterface
+app.get('/:resource/:type/:id/:extra?.json', (req, res, next) => {
+    const { resource, type, id } = req.params;
+    const extra = req.params.extra ? JSON.parse(decodeURIComponent(req.params.extra)) : {};
+    
+    console.log(`Request for ${resource}/${type}/${id}`);
+    
+    if (resource === 'stream') {
+        addonInterface.methods[resource]({ type, id, extra })
+            .then(result => {
+                res.setHeader('Content-Type', 'application/json');
+                res.send(result);
+            })
+            .catch(err => {
+                console.error('Error serving stream:', err);
+                res.status(500).send({ error: 'An error occurred' });
+            });
+    } else {
+        next();
+    }
+});
+
+// Fallback pro všechny ostatní požadavky
+app.use((req, res) => {
+    res.status(404).send({ error: 'Not found' });
+});
 
 // Spustíme server
 const server = http.createServer(app);
