@@ -4,7 +4,11 @@ const sha1 = require('sha1');
 const formencode = require('form-urlencoded')
 const { filesize } = require('filesize')
 
-const headers = { content_type: 'application/x-www-form-urlencoded; charset=UTF-8', accept: 'text/xml; charset=UTF-8' }
+const headers = { 
+    content_type: 'application/x-www-form-urlencoded; charset=UTF-8', 
+    accept: 'text/xml; charset=UTF-8',
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+}
 
 const getQueries = (info) => {
     const names = Array.from(new Set([info.name, info.originalName].filter(n => n)))
@@ -59,18 +63,33 @@ const search = async (query, token) => {
 const webshare = {
     login: async (user, password) => {
         console.log(`Logging in user ${user}`)
-        // get salt
-        const saltResp = await needle('https://webshare.cz/api/salt/', `username_or_email=${user}`, headers)
-        const salt = saltResp.body.children.find(el => el.name == 'salt').value
+        try {
+            // get salt
+            const saltResp = await needle('https://webshare.cz/api/salt/', `username_or_email=${user}`, headers)
+            if (!saltResp.body || !saltResp.body.children) {
+                console.error('Failed to get salt:', saltResp.body);
+                return null;
+            }
+            
+            const salt = saltResp.body.children.find(el => el.name == 'salt').value
 
-        // login
-        const passEncoded = sha1(md5.crypt(password, salt))
-        const data = formencode({ username_or_email: user, password: passEncoded, keep_logged_in: 0 })
-        const resp = await needle('post', 'https://webshare.cz/api/login/', data, headers)
-        if (resp.statusCode != 200 || resp.body.children.find(el => el.name == 'status').value != 'OK') {
-            throw Error('Cannot log in to Webshare.cz, invalid login credentials')
+            // login
+            const passEncoded = sha1(md5.crypt(password, salt))
+            const data = formencode({ username_or_email: user, password: passEncoded, keep_logged_in: 1 })
+            const resp = await needle('post', 'https://webshare.cz/api/login/', data, { headers })
+            
+            if (resp.statusCode != 200 || resp.body.children.find(el => el.name == 'status').value != 'OK') {
+                console.error('Login failed:', resp.body);
+                return null;
+            }
+            
+            const token = resp.body.children.find(el => el.name == 'token').value;
+            console.log('Login successful, token obtained');
+            return token;
+        } catch (error) {
+            console.error('Error during login:', error.message);
+            return null;
         }
-        return resp.body.children.find(el => el.name == 'token').value
     },
 
     // improve movie query by adding year with movies
@@ -98,19 +117,95 @@ const webshare = {
         })).slice(0, 20)
     },
 
-    addUrlToStreams: (streams, token) => {
+    addUrlToStreams: async (streams, token) => {
         return Promise.all(streams.map(async stream => {
-            const { ident, ...restStream } = stream
-            const data = formencode({ ident, download_type: 'video_stream', force_https: 1, wst: token })
-            const resp = await needle('post', 'https://webshare.cz/api/file_link/', data, { headers })
-            const status = resp.body.children.find(el => el.name == 'status').value
-            if (status == 'OK') {
-                const url = resp.body.children.find(el => el.name == 'link').value
-                return { ...restStream, url }
-            } else {
-                return restStream
+            try {
+                const { ident, ...restStream } = stream
+                
+                // Přidání podpory pro opakované pokusy získání URL
+                const MAX_RETRIES = 3;
+                let url = null;
+                let attempt = 0;
+                
+                while (!url && attempt < MAX_RETRIES) {
+                    attempt++;
+                    try {
+                        const data = formencode({ 
+                            ident, 
+                            download_type: 'video_stream', 
+                            force_https: 1, 
+                            wst: token 
+                        });
+                        
+                        const resp = await needle('post', 'https://webshare.cz/api/file_link/', data, { 
+                            headers,
+                            follow_max: 5 // Sledování přesměrování
+                        });
+                        
+                        if (!resp.body || !resp.body.children) {
+                            console.error(`Invalid response for ${ident}, attempt ${attempt}:`, resp.body);
+                            // Krátká pauza před dalším pokusem
+                            await new Promise(resolve => setTimeout(resolve, 1000));
+                            continue;
+                        }
+                        
+                        const status = resp.body.children.find(el => el.name == 'status')?.value;
+                        
+                        if (status === 'OK') {
+                            url = resp.body.children.find(el => el.name == 'link')?.value;
+                            
+                            if (url) {
+                                console.log(`URL získána pro ${ident}: ${url.substring(0, 50)}...`);
+                                
+                                // Ověření URL - zkusíme provést HEAD request
+                                try {
+                                    const checkResp = await needle('head', url, null, {
+                                        follow_max: 5,
+                                        headers: {
+                                            'User-Agent': headers['User-Agent']
+                                        }
+                                    });
+                                    
+                                    if (checkResp.statusCode >= 400) {
+                                        console.error(`URL validation failed for ${ident}: status ${checkResp.statusCode}`);
+                                        url = null; // reset URL to retry
+                                    }
+                                } catch (e) {
+                                    console.error(`Error validating URL for ${ident}:`, e.message);
+                                    url = null; // reset URL to retry
+                                }
+                            }
+                        } else {
+                            console.error(`Failed to get link for ${ident}, status: ${status}`);
+                        }
+                    } catch (err) {
+                        console.error(`Error fetching URL for ${ident}, attempt ${attempt}:`, err.message);
+                    }
+                    
+                    if (!url && attempt < MAX_RETRIES) {
+                        // Exponential backoff
+                        await new Promise(resolve => setTimeout(resolve, attempt * 1500));
+                    }
+                }
+                
+                if (url) {
+                    return { 
+                        ...restStream, 
+                        url,
+                        // Nastavení správného MIME typu pro video streamy
+                        // Pomůže Stremio s přehráváním
+                        contentType: url.toLowerCase().endsWith('.mp4') ? 'video/mp4' : 'video/x-matroska'
+                    };
+                } else {
+                    console.error(`Failed to get valid URL for ${ident} after ${MAX_RETRIES} attempts`);
+                    return restStream;
+                }
+            } catch (error) {
+                console.error(`Unexpected error processing stream:`, error);
+                return restStream;
             }
-        }))
+        }));
     }
 }
+
 module.exports = webshare
