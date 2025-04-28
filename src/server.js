@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 
-// Získáme Stremio addon SDK
-const { serveHTTP } = require("stremio-addon-sdk");
+// Získáme potřebné moduly
 const addonInterface = require("./addon");
 const express = require("express");
 const http = require('http');
@@ -9,51 +8,125 @@ const http = require('http');
 // Port je kriticky důležitý pro cloudové platformy
 const port = process.env.PORT || 10000;
 
-// Určete hostname pro poslech
-const hostname = process.env.HOST || '0.0.0.0';
-
-// Detekce produkčního prostředí
-const isProduction = process.env.NODE_ENV === 'production';
-const publicUrl = process.env.PUBLIC_URL || (isProduction ? 'https://webshare-stremio-rd-mod.onrender.com' : `http://localhost:${port}`);
-
-console.log(`Starting server on ${hostname}:${port}`);
-console.log(`Environment: ${isProduction ? 'production' : 'development'}`);
-console.log(`Public URL: ${publicUrl}`);
-
-// HTML pro hlavní stránku s dynamickou URL
-const landingHTML = `
-<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="UTF-8">
-    <title>Webshare Stremio Addon</title>
-    <style>
-        body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
-        h1 { color: #2c3e50; }
-        .btn { display: inline-block; background: #3498db; color: white; padding: 10px 15px; 
-               text-decoration: none; border-radius: 4px; font-weight: bold; }
-    </style>
-</head>
-<body>
-    <h1>Webshare Stremio Addon s Real-Debrid podporou</h1>
-    <p>Tento addon umožňuje streamování filmů a seriálů z Webshare.cz s podporou Real-Debrid.</p>
-    <p>Pro instalaci do Stremio použijte následující URL:</p>
-    <code>${publicUrl}/manifest.json</code><br><br>
-    <a href="stremio://addon/${publicUrl}/manifest.json" class="btn">Nainstalovat do Stremio</a>
+// Generuje HTML stránku s dynamicky vloženou URL
+function generateHTML(req) {
+    // Detekujeme aktuální URL ze samotného požadavku
+    const host = req.headers.host || 'localhost:10000';
+    const protocol = req.headers['x-forwarded-proto'] || 'http';
+    const baseUrl = `${protocol}://${host}`;
     
-    <div style="margin-top: 20px; padding: 10px; background-color: #f8f9fa; border-radius: 4px;">
-        <p><strong>Server info:</strong></p>
-        <ul>
-            <li>Verze: 0.3.0</li>
-            <li>Stav: Online</li>
-            <li>API endpoint: <a href="${publicUrl}/manifest.json">${publicUrl}/manifest.json</a></li>
-        </ul>
-    </div>
-</body>
-</html>
-`;
+    return `
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Webshare Stremio Addon</title>
+        <style>
+            body { 
+                font-family: Arial, sans-serif; 
+                max-width: 800px; 
+                margin: 0 auto; 
+                padding: 20px; 
+                background-color: #f5f5f5;
+                color: #333;
+            }
+            h1 { 
+                color: #2c3e50; 
+                border-bottom: 2px solid #3498db;
+                padding-bottom: 10px;
+            }
+            .container {
+                background: white;
+                border-radius: 8px;
+                padding: 20px;
+                box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            }
+            .btn { 
+                display: inline-block; 
+                background: #3498db; 
+                color: white; 
+                padding: 10px 15px; 
+                text-decoration: none; 
+                border-radius: 4px; 
+                font-weight: bold; 
+                margin: 10px 0;
+            }
+            .btn:hover {
+                background: #2980b9;
+            }
+            code {
+                background: #f8f8f8;
+                border: 1px solid #ddd;
+                border-radius: 4px;
+                padding: 2px 5px;
+                font-family: monospace;
+            }
+            .feature {
+                margin: 15px 0;
+                padding-left: 20px;
+                border-left: 3px solid #3498db;
+            }
+            .info-box {
+                margin-top: 20px; 
+                padding: 15px; 
+                background-color: #f8f9fa; 
+                border-radius: 6px;
+                border-left: 4px solid #3498db;
+            }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <h1>Webshare Stremio Addon s Real-Debrid podporou</h1>
+            
+            <p>Tento addon umožňuje streamování filmů a seriálů z Webshare.cz s volitelnou podporou Real-Debrid pro rychlejší stahování.</p>
+            
+            <h2>Instalace do Stremio</h2>
+            <p>Pro instalaci tohoto addonu do Stremio klikněte na tlačítko níže:</p>
+            
+            <a href="stremio://addon/${baseUrl}/manifest.json" class="btn">Nainstalovat do Stremio</a>
+            
+            <p>Nebo přidejte následující URL do Stremio ručně v sekci Addons > Přidat Addon:</p>
+            <code>${baseUrl}/manifest.json</code>
+            
+            <h2>Funkce</h2>
+            <div class="feature">
+                <strong>Podpora Real-Debrid:</strong> Možnost využít Real-Debrid službu pro rychlejší a stabilnější streamování.
+            </div>
+            
+            <div class="feature">
+                <strong>Konfigurovatelné nastavení:</strong> Možnost zapnout/vypnout použití Real-Debrid.
+            </div>
+            
+            <div class="feature">
+                <strong>Označené streamy:</strong> Streamy používající Real-Debrid jsou označeny ikonou 🚀.
+            </div>
+            
+            <h2>Nastavení</h2>
+            <p>Po instalaci addonu budete požádáni o:</p>
+            <ul>
+                <li>Přihlašovací údaje k Webshare.cz</li>
+                <li>Volitelně API klíč Real-Debrid</li>
+                <li>Zda chcete používat Real-Debrid pro streamování</li>
+            </ul>
+            
+            <div class="info-box">
+                <p><strong>Server info:</strong></p>
+                <ul>
+                    <li>Verze: 0.3.0</li>
+                    <li>Stav: Online</li>
+                    <li>API endpoint: <a href="${baseUrl}/manifest.json">${baseUrl}/manifest.json</a></li>
+                    <li>Aktuální čas serveru: ${new Date().toISOString()}</li>
+                </ul>
+            </div>
+        </div>
+    </body>
+    </html>
+    `;
+}
 
-// Vytvoříme express HTTP server pro zpracování požadavků
+// Vytvoříme express HTTP server
 const app = express();
 
 // Povolení CORS pro všechny požadavky (důležité pro Stremio)
@@ -65,23 +138,19 @@ app.use((req, res, next) => {
 
 // Logging middleware
 app.use((req, res, next) => {
-    const start = Date.now();
-    res.on('finish', () => {
-        const duration = Date.now() - start;
-        console.log(`${req.method} ${req.originalUrl} - ${res.statusCode} (${duration}ms)`);
-    });
+    console.log(`${new Date().toISOString()} - ${req.method} ${req.url}`);
     next();
 });
 
 // Přidáme middleware pro zpracování požadavků na kořenovou URL
 app.get('/', (req, res) => {
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
-    res.send(landingHTML);
+    res.send(generateHTML(req));
 });
 
 app.get('/index.html', (req, res) => {
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
-    res.send(landingHTML);
+    res.send(generateHTML(req));
 });
 
 app.get('/health', (req, res) => {
@@ -96,9 +165,7 @@ app.get('/health', (req, res) => {
 
 app.get('/healthz', (req, res) => {
     res.setHeader('Content-Type', 'application/json');
-    res.send({
-        status: 'ok'
-    });
+    res.send({ status: 'ok' });
 });
 
 // Stremio addon endpoints
@@ -111,16 +178,17 @@ app.get('/manifest.json', (req, res) => {
 // Zpracování streamů pomocí addonInterface
 app.get('/:resource/:type/:id/:extra?.json', (req, res, next) => {
     const { resource, type, id } = req.params;
-    let extra;
+    let extra = {};
     
     try {
-        extra = req.params.extra ? JSON.parse(decodeURIComponent(req.params.extra)) : {};
+        if (req.params.extra) {
+            extra = JSON.parse(decodeURIComponent(req.params.extra));
+        }
     } catch (e) {
         console.error('Error parsing extra params:', e);
-        extra = {};
     }
     
-    console.log(`Request for ${resource}/${type}/${id} with extra:`, extra);
+    console.log(`Request for ${resource}/${type}/${id}`);
     
     if (resource === 'stream') {
         // Přidat config z query parametrů, pokud existují
@@ -136,7 +204,6 @@ app.get('/:resource/:type/:id/:extra?.json', (req, res, next) => {
             .then(result => {
                 res.setHeader('Content-Type', 'application/json');
                 res.send(result);
-                console.log(`Stream response sent for ${type}/${id} with ${result.streams ? result.streams.length : 0} streams`);
             })
             .catch(err => {
                 console.error('Error serving stream:', err);
@@ -151,20 +218,14 @@ app.get('/:resource/:type/:id/:extra?.json', (req, res, next) => {
 app.use((req, res) => {
     res.status(404).send({ 
         error: 'Not found',
-        message: 'The requested resource was not found',
-        availableEndpoints: [
-            '/',
-            '/manifest.json',
-            '/stream/:type/:id.json'
-        ]
+        message: 'The requested resource was not found' 
     });
 });
 
 // Spustíme server
 const server = http.createServer(app);
-server.listen(port, hostname, () => {
+server.listen(port, '0.0.0.0', () => {
     console.log(`Server běží na portu ${port}`);
-    console.log(`Adresa pro Stremio: ${publicUrl}/manifest.json`);
 });
 
 // Zachytávání chyb
